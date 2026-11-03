@@ -34,9 +34,11 @@ class HistoryRepo {
 
   Future<void> addBookmark(MediaEntry e, Duration position) async {
     final list = await bookmarks();
+    list.removeWhere((m) =>
+        m['path'] == e.path && ((m['positionMs'] as int) ~/ 1000) == position.inSeconds);
     list.insert(0, {...e.toJson(), 'positionMs': position.inMilliseconds});
     await _store.write('bookmarks', list.take(200).toList());
   }
-
+  
   Future<void> clearHistory() => _store.write('history', <Object>[]);
 }
