@@ -7,10 +7,17 @@ import '../../data/models/media_entry.dart';
 import '../../providers.dart';
 import '../video/video_player_page.dart';
 
-class LibraryScreen extends ConsumerWidget {
+class LibraryScreen extends ConsumerStatefulWidget {
   const LibraryScreen({super.key});
 
-  void _play(BuildContext context, WidgetRef ref, Map<String, dynamic> m) {
+  @override
+  ConsumerState<LibraryScreen> createState() => _LibraryScreenState();
+}
+
+class _LibraryScreenState extends ConsumerState<LibraryScreen> {
+  void _refresh() => setState(() {});
+
+  void _play(Map<String, dynamic> m) {
     final e = MediaEntry.fromJson(m);
     final start = Duration(milliseconds: (m['positionMs'] as int?) ?? 0);
     if (e.kind == MediaKind.video) {
@@ -22,15 +29,30 @@ class LibraryScreen extends ConsumerWidget {
     }
   }
 
+  Future<bool> _confirm(String text) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        content: Text(text),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Batal')),
+          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Hapus')),
+        ],
+      ),
+    );
+    return ok ?? false;
+  }
+
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final lib = ref.watch(libraryProvider);
     final notifier = ref.read(libraryProvider.notifier);
     final repo = ref.read(historyProvider);
+    final titleStyle = Theme.of(context).textTheme.titleMedium;
 
     return ListView(padding: const EdgeInsets.all(16), children: [
       Row(children: [
-        Text('Folder', style: Theme.of(context).textTheme.titleMedium),
+        Text('Folder', style: titleStyle),
         const Spacer(),
         IconButton(
             tooltip: 'Scan ulang',
@@ -58,7 +80,19 @@ class LibraryScreen extends ConsumerWidget {
         ]),
       ),
       const Divider(height: 32),
-      Text('Riwayat', style: Theme.of(context).textTheme.titleMedium),
+      Row(children: [
+        Text('Riwayat', style: titleStyle),
+        const Spacer(),
+        TextButton(
+          onPressed: () async {
+            if (await _confirm('Hapus seluruh riwayat?')) {
+              await repo.clearHistory();
+              _refresh();
+            }
+          },
+          child: const Text('Bersihkan'),
+        ),
+      ]),
       FutureBuilder<List<Map<String, dynamic>>>(
         future: repo.history(),
         builder: (_, s) => Column(children: [
@@ -68,12 +102,32 @@ class LibraryScreen extends ConsumerWidget {
               leading: Icon(m['kind'] == 'video' ? Icons.movie_rounded : Icons.music_note_rounded),
               title: Text(m['title'] as String, maxLines: 1, overflow: TextOverflow.ellipsis),
               subtitle: Text('Lanjut dari ${fmt(Duration(milliseconds: m['positionMs'] as int))}'),
-              onTap: () => _play(context, ref, m),
+              trailing: IconButton(
+                tooltip: 'Hapus dari riwayat',
+                icon: const Icon(Icons.close_rounded, size: 18),
+                onPressed: () async {
+                  await repo.removeHistory(m['path'] as String);
+                  _refresh();
+                },
+              ),
+              onTap: () => _play(m),
             ),
         ]),
       ),
       const Divider(height: 32),
-      Text('Bookmark', style: Theme.of(context).textTheme.titleMedium),
+      Row(children: [
+        Text('Bookmark', style: titleStyle),
+        const Spacer(),
+        TextButton(
+          onPressed: () async {
+            if (await _confirm('Hapus semua bookmark?')) {
+              await repo.clearBookmarks();
+              _refresh();
+            }
+          },
+          child: const Text('Bersihkan'),
+        ),
+      ]),
       FutureBuilder<List<Map<String, dynamic>>>(
         future: repo.bookmarks(),
         builder: (_, s) => Column(children: [
@@ -83,7 +137,15 @@ class LibraryScreen extends ConsumerWidget {
               leading: const Icon(Icons.bookmark_rounded),
               title: Text(m['title'] as String, maxLines: 1, overflow: TextOverflow.ellipsis),
               subtitle: Text(fmt(Duration(milliseconds: m['positionMs'] as int))),
-              onTap: () => _play(context, ref, m),
+              trailing: IconButton(
+                tooltip: 'Hapus bookmark',
+                icon: const Icon(Icons.close_rounded, size: 18),
+                onPressed: () async {
+                  await repo.removeBookmark(m['path'] as String, m['positionMs'] as int);
+                  _refresh();
+                },
+              ),
+              onTap: () => _play(m),
             ),
         ]),
       ),

@@ -24,7 +24,7 @@ class NowPlaying extends StatelessWidget {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             ValueListenableBuilder<Uint8List?>(
               valueListenable: handler.cover,
-              builder: (_, cover, __) => _AlbumArt(seed: seed, cover: cover),
+              builder: (_, cover, _) => _AlbumArt(seed: seed, cover: cover),
             ),
             const SizedBox(height: 16),
             Text(item?.title ?? 'Nothing playing',
@@ -152,7 +152,7 @@ class _AlbumArt extends StatelessWidget {
                   fit: BoxFit.cover,
                   cacheWidth: 520, // batasi memori hasil decode
                   gaplessPlayback: true,
-                  errorBuilder: (_, __, ___) => fallback,
+                  errorBuilder: (_, _, _) => fallback,
                 ),
         ),
       ),

@@ -24,7 +24,7 @@ class MiniPlayer extends ConsumerWidget {
             dense: true,
             leading: ValueListenableBuilder<Uint8List?>(
               valueListenable: h.cover,
-              builder: (_, cover, __) => ClipRRect(
+              builder: (_, cover, _) => ClipRRect(
                 borderRadius: BorderRadius.circular(6),
                 child: SizedBox(
                   width: 40,
@@ -36,7 +36,7 @@ class MiniPlayer extends ConsumerWidget {
                           fit: BoxFit.cover,
                           cacheWidth: 80,
                           gaplessPlayback: true,
-                          errorBuilder: (_, __, ___) =>
+                          errorBuilder: (_, _, _) =>
                               const Icon(Icons.music_note_rounded),
                         ),
                 ),

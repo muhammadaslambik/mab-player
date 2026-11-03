@@ -13,6 +13,8 @@ class HistoryRepo {
   }
 
   Future<List<Map<String, dynamic>>> history() => _list('history');
+
+  /// Bookmark tanpa duplikat (video yang sama di detik yang sama).
   Future<List<Map<String, dynamic>>> bookmarks() async {
     final seen = <String>{};
     return [
@@ -39,12 +41,28 @@ class HistoryRepo {
   }
 
   Future<void> addBookmark(MediaEntry e, Duration position) async {
-    final list = await bookmarks();
+    final list = await _list('bookmarks');
     list.removeWhere((m) =>
         m['path'] == e.path && ((m['positionMs'] as int) ~/ 1000) == position.inSeconds);
     list.insert(0, {...e.toJson(), 'positionMs': position.inMilliseconds});
     await _store.write('bookmarks', list.take(200).toList());
   }
 
+  Future<void> removeHistory(String path) async {
+    final list = await history();
+    list.removeWhere((m) => m['path'] == path);
+    await _store.write('history', list);
+  }
+
+  /// Hapus bookmark pada video [path] di detik yang sama dengan [positionMs]
+  /// (termasuk duplikat lama yang mungkin masih tersimpan).
+  Future<void> removeBookmark(String path, int positionMs) async {
+    final list = await _list('bookmarks');
+    list.removeWhere((m) =>
+        m['path'] == path && ((m['positionMs'] as int) ~/ 1000) == positionMs ~/ 1000);
+    await _store.write('bookmarks', list);
+  }
+
   Future<void> clearHistory() => _store.write('history', <Object>[]);
+  Future<void> clearBookmarks() => _store.write('bookmarks', <Object>[]);
 }
