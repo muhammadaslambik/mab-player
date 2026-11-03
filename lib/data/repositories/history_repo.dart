@@ -13,7 +13,13 @@ class HistoryRepo {
   }
 
   Future<List<Map<String, dynamic>>> history() => _list('history');
-  Future<List<Map<String, dynamic>>> bookmarks() => _list('bookmarks');
+  Future<List<Map<String, dynamic>>> bookmarks() async {
+    final seen = <String>{};
+    return [
+      for (final m in await _list('bookmarks'))
+        if (seen.add('${m['path']}|${(m['positionMs'] as int) ~/ 1000}')) m,
+    ];
+  }
 
   Future<void> record(MediaEntry e, Duration position) async {
     final list = await history();
@@ -39,6 +45,6 @@ class HistoryRepo {
     list.insert(0, {...e.toJson(), 'positionMs': position.inMilliseconds});
     await _store.write('bookmarks', list.take(200).toList());
   }
-  
+
   Future<void> clearHistory() => _store.write('history', <Object>[]);
 }

@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -15,12 +17,35 @@ class MiniPlayer extends ConsumerWidget {
       builder: (context, snap) {
         final item = snap.data;
         if (item == null) return const SizedBox.shrink();
+        final artist = item.artist;
         return Material(
           color: Theme.of(context).colorScheme.surfaceContainer,
           child: ListTile(
             dense: true,
-            leading: const Icon(Icons.music_note_rounded),
+            leading: ValueListenableBuilder<Uint8List?>(
+              valueListenable: h.cover,
+              builder: (_, cover, __) => ClipRRect(
+                borderRadius: BorderRadius.circular(6),
+                child: SizedBox(
+                  width: 40,
+                  height: 40,
+                  child: cover == null
+                      ? const Icon(Icons.music_note_rounded)
+                      : Image.memory(
+                          cover,
+                          fit: BoxFit.cover,
+                          cacheWidth: 80,
+                          gaplessPlayback: true,
+                          errorBuilder: (_, __, ___) =>
+                              const Icon(Icons.music_note_rounded),
+                        ),
+                ),
+              ),
+            ),
             title: Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+            subtitle: artist == null
+                ? null
+                : Text(artist, maxLines: 1, overflow: TextOverflow.ellipsis),
             trailing: StreamBuilder<bool>(
               stream: h.player.stream.playing,
               initialData: h.player.state.playing,

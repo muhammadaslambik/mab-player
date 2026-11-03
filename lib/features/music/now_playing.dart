@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 
@@ -15,16 +17,28 @@ class NowPlaying extends StatelessWidget {
       stream: handler.mediaItem,
       builder: (context, snap) {
         final item = snap.data;
+        final artist = item?.artist;
         final seed = (item?.id ?? '').hashCode;
         return Padding(
           padding: const EdgeInsets.all(20),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            _AlbumArt(seed: seed),
+            ValueListenableBuilder<Uint8List?>(
+              valueListenable: handler.cover,
+              builder: (_, cover, __) => _AlbumArt(seed: seed, cover: cover),
+            ),
             const SizedBox(height: 16),
             Text(item?.title ?? 'Nothing playing',
-                maxLines: 1,
+                maxLines: 2,
+                textAlign: TextAlign.center,
                 overflow: TextOverflow.ellipsis,
                 style: Theme.of(context).textTheme.titleLarge),
+            if (artist != null) ...[
+              const SizedBox(height: 4),
+              Text(artist,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: Theme.of(context).textTheme.bodyMedium),
+            ],
             const SizedBox(height: 12),
             StreamBuilder<Duration>(
               stream: player.stream.position,
@@ -102,29 +116,44 @@ class _Controls extends StatelessWidget {
 }
 
 class _AlbumArt extends StatelessWidget {
-  const _AlbumArt({required this.seed});
+  const _AlbumArt({required this.seed, this.cover});
   final int seed;
+  final Uint8List? cover;
 
   @override
   Widget build(BuildContext context) {
     final hue = (seed.abs() % 360).toDouble();
     final c1 = HSLColor.fromAHSL(1, hue, 0.6, 0.35).toColor();
     final c2 = HSLColor.fromAHSL(1, (hue + 50) % 360, 0.6, 0.2).toColor();
+    final art = cover;
+
+    final fallback = DecoratedBox(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [c1, c2],
+        ),
+      ),
+      child: const Center(
+          child: Icon(Icons.music_note_rounded, size: 72, color: Colors.white70)),
+    );
+
     return ConstrainedBox(
       constraints: const BoxConstraints(maxWidth: 260),
       child: AspectRatio(
         aspectRatio: 1,
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(24),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [c1, c2],
-            ),
-          ),
-          child: const Center(
-              child: Icon(Icons.music_note_rounded, size: 72, color: Colors.white70)),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(24),
+          child: art == null
+              ? fallback
+              : Image.memory(
+                  art,
+                  fit: BoxFit.cover,
+                  cacheWidth: 520, // batasi memori hasil decode
+                  gaplessPlayback: true,
+                  errorBuilder: (_, __, ___) => fallback,
+                ),
         ),
       ),
     );

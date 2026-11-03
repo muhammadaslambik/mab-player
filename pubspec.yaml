@@ -45,6 +45,7 @@ dependencies:
   permission_handler: ^13.0.2
   window_manager: 0.5.1
   wakelock_plus: ^1.8.2
+  audio_metadata_reader: ^1.8.1
 
 dev_dependencies:
   flutter_test:
