@@ -4,7 +4,11 @@ import 'package:path/path.dart' as p;
 
 import '../../core/utils/format.dart';
 import '../../data/models/media_entry.dart';
+import '../../data/repositories/playlist_repo.dart';
 import '../../providers.dart';
+import '../playlists/playlist_actions.dart';
+import '../playlists/playlist_page.dart';
+import '../playlists/playlist_providers.dart';
 import '../video/video_player_page.dart';
 
 class LibraryScreen extends ConsumerStatefulWidget {
@@ -48,6 +52,7 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
     final lib = ref.watch(libraryProvider);
     final notifier = ref.read(libraryProvider.notifier);
     final repo = ref.read(historyProvider);
+    final plRepo = ref.read(playlistRepoProvider);
     final titleStyle = Theme.of(context).textTheme.titleMedium;
 
     return ListView(padding: const EdgeInsets.all(16), children: [
@@ -78,6 +83,49 @@ class _LibraryScreenState extends ConsumerState<LibraryScreen> {
               ),
             ),
         ]),
+      ),
+      const Divider(height: 32),
+      Row(children: [
+        Text('Playlist', style: titleStyle),
+        const Spacer(),
+        IconButton(
+          tooltip: 'Playlist baru',
+          icon: const Icon(Icons.playlist_add_rounded),
+          onPressed: () async {
+            final name = await askPlaylistName(context);
+            if (name == null) return;
+            await plRepo.create(name);
+            if (mounted) _refresh();
+          },
+        ),
+      ]),
+      FutureBuilder<List<Playlist>>(
+        future: plRepo.all(),
+        builder: (_, s) {
+          final lists = s.data ?? const <Playlist>[];
+          if (lists.isEmpty && s.connectionState == ConnectionState.done) {
+            return const Padding(
+              padding: EdgeInsets.symmetric(vertical: 8),
+              child: Text('Belum ada playlist.'),
+            );
+          }
+          return Column(children: [
+            for (final pl in lists)
+              ListTile(
+                dense: true,
+                leading: const Icon(Icons.queue_music_rounded),
+                title: Text(pl.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+                subtitle: Text('${pl.paths.length} lagu'),
+                trailing: const Icon(Icons.chevron_right_rounded),
+                onTap: () => Navigator.of(context)
+                    .push(MaterialPageRoute(
+                        builder: (_) => PlaylistPage(playlistId: pl.id)))
+                    .then((_) {
+                  if (mounted) _refresh();
+                }),
+              ),
+          ]);
+        },
       ),
       const Divider(height: 32),
       Row(children: [

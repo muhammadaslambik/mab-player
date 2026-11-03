@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/media_entry.dart';
 import '../../providers.dart';
+import '../playlists/playlist_actions.dart';
 import 'now_playing.dart';
 
 enum _Sort { scan, titleAsc, titleDesc }
@@ -127,6 +128,11 @@ class _MusicScreenState extends ConsumerState<MusicScreen> {
                         color: active ? Theme.of(context).colorScheme.primary : null),
                     title: Text(e.title, maxLines: 1, overflow: TextOverflow.ellipsis),
                     selected: active,
+                    trailing: IconButton(
+                      tooltip: 'Tambah ke playlist',
+                      icon: const Icon(Icons.playlist_add_rounded),
+                      onPressed: () => showAddToPlaylist(context, ref, e),
+                    ),
                     // Antrean = daftar yang sedang tampil (hasil cari/urut).
                     onTap: () => handler.setQueue(items, index: i),
                   );
