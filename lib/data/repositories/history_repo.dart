@@ -1,0 +1,42 @@
+import '../models/media_entry.dart';
+import '../services/json_store.dart';
+
+class HistoryRepo {
+  HistoryRepo(this._store);
+  final JsonStore _store;
+
+  Future<List<Map<String, dynamic>>> _list(String name) async {
+    final r = await _store.read(name);
+    return r is List
+        ? r.map((e) => Map<String, dynamic>.from(e as Map)).toList()
+        : <Map<String, dynamic>>[];
+  }
+
+  Future<List<Map<String, dynamic>>> history() => _list('history');
+  Future<List<Map<String, dynamic>>> bookmarks() => _list('bookmarks');
+
+  Future<void> record(MediaEntry e, Duration position) async {
+    final list = await history();
+    list.removeWhere((m) => m['path'] == e.path);
+    list.insert(0, {
+      ...e.toJson(),
+      'positionMs': position.inMilliseconds,
+      'at': DateTime.now().toIso8601String(),
+    });
+    await _store.write('history', list.take(100).toList());
+  }
+
+  Future<Duration> lastPosition(String path) async {
+    final list = await history();
+    final m = list.where((e) => e['path'] == path);
+    return m.isEmpty ? Duration.zero : Duration(milliseconds: m.first['positionMs'] as int);
+  }
+
+  Future<void> addBookmark(MediaEntry e, Duration position) async {
+    final list = await bookmarks();
+    list.insert(0, {...e.toJson(), 'positionMs': position.inMilliseconds});
+    await _store.write('bookmarks', list.take(200).toList());
+  }
+
+  Future<void> clearHistory() => _store.write('history', <Object>[]);
+}

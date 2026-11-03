@@ -1,0 +1,67 @@
+# Miscellaneous
+*.class
+*.log
+*.pyc
+*.swp
+.DS_Store
+.atom
+.buildlog/
+.history
+.svn
+.direnv/
+.fvm/
+coverage/
+
+# IntelliJ IDEA project files
+.idea/
+*.iml
+*.iws
+
+# Visual Studio Code workspace files
+.vscode/
+*.code-workspace
+.history/
+
+# Flutter/Dart packages
+.dart_tool/
+.packages
+.pub-cache/
+.pub/
+/build/
+.flutter-plugins
+.flutter-plugins-dependencies
+**/flutter/ephemeral/
+**/Flutter/ephemeral/
+**/generated_plugin_registrant.*
+
+# Android specific files
+android/**/*.iml
+android/.gradle/
+android/captures/
+android/key.properties
+local.properties
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# iOS/macOS specific files
+ios/.generated/
+ios/Flutter/Flutter.podspec
+ios/Flutter/Generated.xcconfig
+ios/Flutter/flutter_export_environment.sh
+ios/Pods/
+Pods/
+macos/Flutter/ephemeral/
+XcodeWorkspaceSettings.plist
+
+# Sensitive/Secret files (crucial for public repositories)
+.env
+.env.*
+secrets.json
+*.keystore
+*.jks
+*.p12
+*.pem
+google-services.json
+GoogleService-Info.plist
