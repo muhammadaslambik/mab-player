@@ -1,10 +1,15 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:math' show min;
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:audio_metadata_reader/audio_metadata_reader.dart' show readMetadata;
 import 'package:audio_service/audio_service.dart';
 import 'package:flutter/foundation.dart' show ValueNotifier;
+import 'package:flutter/painting.dart' show Color, HSLColor;
 import 'package:media_kit/media_kit.dart';
+import 'package:path/path.dart' as pth;
 
 import '../data/models/media_entry.dart';
 
@@ -31,6 +36,13 @@ class MabAudioHandler extends BaseAudioHandler with SeekHandler {
 
   /// Cover tertanam lagu yang sedang diputar (null = pakai gradien).
   final ValueNotifier<Uint8List?> cover = ValueNotifier<Uint8List?>(null);
+
+  /// Warna aksen dari cover (null = warna tema bawaan).
+  final ValueNotifier<Color?> accent = ValueNotifier<Color?>(null);
+
+  /// Waktu sleep timer berakhir (null = mati).
+  final ValueNotifier<DateTime?> sleepAt = ValueNotifier<DateTime?>(null);
+  Timer? _sleepTimer;
   String? _tagPath;
 
   /// Baca tag (judul, artis, album, cover) hanya untuk lagu yang sedang
@@ -59,20 +71,104 @@ class MabAudioHandler extends BaseAudioHandler with SeekHandler {
       // Tag tidak terbaca atau format tidak didukung: pakai nama file.
     }
     cover.value = art;
+    if (art == null) {
+      accent.value = null;
+    } else {
+      _accentOf(art).then((c) {
+        if (_tagPath == base.id) accent.value = c;
+      });
+    }
     mediaItem.add(item);
   }
 
-  Future<void> setQueue(List<MediaEntry> items, {int index = 0}) async {
+  /// Warna dominan ringan: cover dikecilkan ke ~24 px lalu dirata-rata,
+  /// piksel yang lebih jenuh diberi bobot lebih besar.
+  Future<Color?> _accentOf(Uint8List bytes) async {
+    ui.Codec? codec;
+    ui.Image? img;
+    try {
+      codec = await ui.instantiateImageCodec(bytes, targetWidth: 24);
+      img = (await codec.getNextFrame()).image;
+      final data = await img.toByteData(format: ui.ImageByteFormat.rawRgba);
+      if (data == null) return null;
+      double r = 0, g = 0, b = 0, w = 0;
+      var count = 0;
+      for (var i = 0; i + 3 < data.lengthInBytes; i += 4) {
+        if (data.getUint8(i + 3) < 128) continue;
+        final pr = data.getUint8(i), pg = data.getUint8(i + 1), pb = data.getUint8(i + 2);
+        final hsl = HSLColor.fromColor(Color.fromARGB(255, pr, pg, pb));
+        final wt = hsl.saturation * (1 - (2 * hsl.lightness - 1).abs()) + 0.001;
+        r += pr * wt;
+        g += pg * wt;
+        b += pb * wt;
+        w += wt;
+        count++;
+      }
+      if (count == 0 || w < 0.05 * count) return null; // hampir abu-abu
+      final avg = HSLColor.fromColor(
+          Color.fromARGB(255, (r / w).round(), (g / w).round(), (b / w).round()));
+      return avg
+          .withLightness(0.72)
+          .withSaturation(avg.saturation.clamp(0.4, 0.85).toDouble())
+          .toColor();
+    } catch (_) {
+      return null;
+    } finally {
+      img?.dispose();
+      codec?.dispose();
+    }
+  }
+
+  Future<void> setQueue(List<MediaEntry> items, {int index = 0, bool play = true}) =>
+      _openItems([
+        for (final e in items) MediaItem(id: e.path, title: e.title, album: 'Local library'),
+      ], index, play);
+
+  /// Pulihkan antrean dari penyimpanan (tidak langsung diputar).
+  Future<void> restoreQueue(List<String> paths, {int index = 0}) => _openItems([
+        for (final p in paths)
+          MediaItem(id: p, title: pth.basenameWithoutExtension(p), album: 'Local library'),
+      ], index, false);
+
+  Future<void> _openItems(List<MediaItem> items, int index, bool play) async {
     if (items.isEmpty) return;
     _tagPath = null;
-    queue.add([
-      for (final e in items) MediaItem(id: e.path, title: e.title, album: 'Local library'),
-    ]);
-    mediaItem.add(queue.value[index]);
+    queue.add(items);
+    mediaItem.add(items[index]);
     await player.open(
-      Playlist([for (final e in items) Media(e.path)], index: index),
-      play: true,
+      Playlist([for (final m in items) Media(m.id)], index: index),
+      play: play,
     );
+  }
+
+  /// Tambahkan lagu ke antrean: [next] = tepat setelah lagu yang sedang main.
+  Future<void> enqueue(MediaEntry e, {bool next = false}) async {
+    if (queue.value.isEmpty) {
+      await setQueue([e]);
+      return;
+    }
+    final oldLen = queue.value.length;
+    final cur = player.state.playlist.index;
+    final at = next ? min(cur + 1, oldLen) : oldLen;
+    final q = [...queue.value]
+      ..insert(at, MediaItem(id: e.path, title: e.title, album: 'Local library'));
+    queue.add(q);
+    await player.add(Media(e.path));
+    if (at != oldLen) await player.move(oldLen, at);
+  }
+
+  /// Atur sleep timer; null mematikan.
+  void setSleepTimer(Duration? d) {
+    _sleepTimer?.cancel();
+    if (d == null) {
+      sleepAt.value = null;
+      return;
+    }
+    sleepAt.value = DateTime.now().add(d);
+    _sleepTimer = Timer(d, () {
+      player.pause();
+      sleepAt.value = null;
+    });
   }
 
   void _broadcast() {
@@ -128,16 +224,16 @@ class MabAudioHandler extends BaseAudioHandler with SeekHandler {
   Future<void> setSpeed(double speed) => player.setRate(speed);
 
   @override
-  Future<void> setShuffleMode(AudioServiceShuffleMode mode) async {
-    _shuffle = mode;
-    await player.setShuffle(mode != AudioServiceShuffleMode.none);
+  Future<void> setShuffleMode(AudioServiceShuffleMode shuffleMode) async {
+    _shuffle = shuffleMode;
+    await player.setShuffle(shuffleMode != AudioServiceShuffleMode.none);
     _broadcast();
   }
 
   @override
-  Future<void> setRepeatMode(AudioServiceRepeatMode mode) async {
-    _repeat = mode;
-    await player.setPlaylistMode(switch (mode) {
+  Future<void> setRepeatMode(AudioServiceRepeatMode repeatMode) async {
+    _repeat = repeatMode;
+    await player.setPlaylistMode(switch (repeatMode) {
       AudioServiceRepeatMode.none => PlaylistMode.none,
       AudioServiceRepeatMode.one => PlaylistMode.single,
       _ => PlaylistMode.loop,

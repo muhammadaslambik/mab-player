@@ -12,7 +12,6 @@ class NowPlaying extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final player = handler.player;
     return StreamBuilder<MediaItem?>(
       stream: handler.mediaItem,
       builder: (context, snap) {
@@ -40,23 +39,47 @@ class NowPlaying extends StatelessWidget {
                   style: Theme.of(context).textTheme.bodyMedium),
             ],
             const SizedBox(height: 12),
-            StreamBuilder<Duration>(
-              stream: player.stream.position,
-              initialData: player.state.position,
-              builder: (_, pos) => StreamBuilder<Duration>(
-                stream: player.stream.duration,
-                initialData: player.state.duration,
-                builder: (_, dur) => WaveformSeekBar(
-                  position: pos.data ?? Duration.zero,
-                  duration: dur.data ?? Duration.zero,
-                  seed: seed,
-                  onSeek: handler.seek,
-                ),
-              ),
-            ),
+            WaveformSeekBar(player: handler.player, seed: seed, onSeek: handler.seek),
             const SizedBox(height: 8),
             _Controls(handler: handler),
+            _SleepButton(handler: handler),
           ]),
+        );
+      },
+    );
+  }
+}
+
+class _SleepButton extends StatelessWidget {
+  const _SleepButton({required this.handler});
+  final MabAudioHandler handler;
+
+  static String _hm(DateTime t) =>
+      '${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}';
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<DateTime?>(
+      valueListenable: handler.sleepAt,
+      builder: (context, at, _) {
+        final primary = Theme.of(context).colorScheme.primary;
+        return PopupMenuButton<int>(
+          tooltip: 'Sleep timer',
+          onSelected: (m) => handler.setSleepTimer(m == 0 ? null : Duration(minutes: m)),
+          itemBuilder: (_) => [
+            for (final m in const [15, 30, 45, 60])
+              PopupMenuItem(value: m, child: Text('$m menit')),
+            if (at != null) const PopupMenuItem(value: 0, child: Text('Matikan timer')),
+          ],
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            child: Row(mainAxisSize: MainAxisSize.min, children: [
+              Icon(Icons.bedtime_outlined, size: 18, color: at == null ? null : primary),
+              const SizedBox(width: 6),
+              Text(at == null ? 'Sleep timer' : 'Berhenti ${_hm(at)}',
+                  style: Theme.of(context).textTheme.labelMedium),
+            ]),
+          ),
         );
       },
     );

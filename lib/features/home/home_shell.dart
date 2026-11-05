@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../providers.dart';
+import '../../services/playback_memory.dart';
 import '../library/library_screen.dart';
 import '../music/mini_player.dart';
 import '../music/music_screen.dart';
@@ -14,12 +16,27 @@ class HomeShell extends ConsumerStatefulWidget {
 
 class _HomeShellState extends ConsumerState<HomeShell> {
   int _index = 0;
+  PlaybackMemory? _memory;
 
   static const _dests = [
     (Icons.library_music_rounded, 'Music'),
     (Icons.video_library_rounded, 'Video'),
     (Icons.folder_rounded, 'Library'),
   ];
+
+  @override
+  void initState() {
+    super.initState();
+    // Pulihkan lagu & posisi terakhir (dalam keadaan jeda).
+    _memory = PlaybackMemory(ref.read(audioHandlerProvider), ref.read(storeProvider))
+      ..start();
+  }
+
+  @override
+  void dispose() {
+    _memory?.dispose();
+    super.dispose();
+  }
 
   // Hanya tab aktif yang dibangun -> hemat RAM.
   Widget get _page => switch (_index) {

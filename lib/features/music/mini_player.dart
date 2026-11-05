@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../providers.dart';
+import 'full_player_page.dart';
 
 class MiniPlayer extends ConsumerWidget {
   const MiniPlayer({super.key});
@@ -22,6 +23,9 @@ class MiniPlayer extends ConsumerWidget {
           color: Theme.of(context).colorScheme.surfaceContainer,
           child: ListTile(
             dense: true,
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const FullPlayerPage()),
+            ),
             leading: ValueListenableBuilder<Uint8List?>(
               valueListenable: h.cover,
               builder: (_, cover, _) => ClipRRect(

@@ -1,13 +1,15 @@
-import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/models/media_entry.dart';
 import '../../providers.dart';
 import '../playlists/playlist_actions.dart';
+import 'accent_scope.dart';
 import 'now_playing.dart';
 
 enum _Sort { scan, titleAsc, titleDesc }
+
+enum _Act { next, queue, playlist }
 
 class MusicScreen extends ConsumerStatefulWidget {
   const MusicScreen({super.key});
@@ -21,14 +23,26 @@ class _MusicScreenState extends ConsumerState<MusicScreen> {
   String _query = '';
   _Sort _sort = _Sort.scan;
 
+  // Cache hasil cari/urut: tidak diurutkan ulang tiap build.
+  List<MediaEntry>? _srcCache;
+  String _qCache = '';
+  _Sort _sortCache = _Sort.scan;
+  List<MediaEntry> _viewCache = const [];
+
+  // Hanya berubah bila lagu aktif ganti (bukan tiap update durasi/tag).
+  late final Stream<String?> _ids =
+      ref.read(audioHandlerProvider).mediaItem.map((m) => m?.id).distinct();
+
   @override
   void dispose() {
     _search.dispose();
     super.dispose();
   }
 
-  /// Daftar yang tampil: disaring oleh pencarian, lalu diurutkan.
   List<MediaEntry> _view(List<MediaEntry> items) {
+    if (identical(items, _srcCache) && _query == _qCache && _sort == _sortCache) {
+      return _viewCache;
+    }
     final q = _query.trim().toLowerCase();
     var out = q.isEmpty
         ? items
@@ -39,7 +53,31 @@ class _MusicScreenState extends ConsumerState<MusicScreen> {
           return _sort == _Sort.titleAsc ? c : -c;
         });
     }
-    return out;
+    _srcCache = items;
+    _qCache = _query;
+    _sortCache = _sort;
+    return _viewCache = out;
+  }
+
+  void _toast(String msg) {
+    final m = ScaffoldMessenger.of(context);
+    m.hideCurrentSnackBar();
+    m.showSnackBar(
+        SnackBar(content: Text(msg), duration: const Duration(milliseconds: 1400)));
+  }
+
+  void _onAction(_Act a, MediaEntry e) {
+    final h = ref.read(audioHandlerProvider);
+    switch (a) {
+      case _Act.next:
+        h.enqueue(e, next: true);
+        _toast('Diputar berikutnya');
+      case _Act.queue:
+        h.enqueue(e);
+        _toast('Ditambahkan ke antrean');
+      case _Act.playlist:
+        showAddToPlaylist(context, ref, e);
+    }
   }
 
   Widget _header() => Padding(
@@ -112,29 +150,23 @@ class _MusicScreenState extends ConsumerState<MusicScreen> {
 
     final list = items.isEmpty
         ? const Center(child: Text('Tidak ada lagu yang cocok'))
-        : StreamBuilder<MediaItem?>(
-            stream: handler.mediaItem,
+        : StreamBuilder<String?>(
+            stream: _ids,
             builder: (context, snap) {
-              final currentId = snap.data?.id;
+              final currentId = snap.data;
+              final accent = Theme.of(context).colorScheme.primary;
               return ListView.builder(
                 itemCount: items.length,
                 itemExtent: 60,
                 itemBuilder: (_, i) {
                   final e = items[i];
-                  final active = e.path == currentId;
-                  return ListTile(
-                    leading: Icon(
-                        active ? Icons.graphic_eq_rounded : Icons.music_note_rounded,
-                        color: active ? Theme.of(context).colorScheme.primary : null),
-                    title: Text(e.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                    selected: active,
-                    trailing: IconButton(
-                      tooltip: 'Tambah ke playlist',
-                      icon: const Icon(Icons.playlist_add_rounded),
-                      onPressed: () => showAddToPlaylist(context, ref, e),
-                    ),
+                  return _TrackRow(
+                    entry: e,
+                    active: e.path == currentId,
+                    accent: accent,
                     // Antrean = daftar yang sedang tampil (hasil cari/urut).
                     onTap: () => handler.setQueue(items, index: i),
+                    onAction: (a) => _onAction(a, e),
                   );
                 },
               );
@@ -146,21 +178,73 @@ class _MusicScreenState extends ConsumerState<MusicScreen> {
       Expanded(child: list),
     ]);
 
-    return LayoutBuilder(builder: (context, box) {
-      if (box.maxWidth >= 800) {
-        return Row(children: [
-          SizedBox(
-              width: 400,
-              child: Center(child: SingleChildScrollView(child: NowPlaying(handler: handler)))),
-          const VerticalDivider(width: 1),
+    return AccentScope(
+      handler: handler,
+      child: LayoutBuilder(builder: (context, box) {
+        if (box.maxWidth >= 800) {
+          return Row(children: [
+            SizedBox(
+                width: 400,
+                child: Center(
+                    child: SingleChildScrollView(child: NowPlaying(handler: handler)))),
+            const VerticalDivider(width: 1),
+            Expanded(child: queue),
+          ]);
+        }
+        return Column(children: [
+          NowPlaying(handler: handler),
+          const Divider(height: 1),
           Expanded(child: queue),
         ]);
-      }
-      return Column(children: [
-        NowPlaying(handler: handler),
-        const Divider(height: 1),
-        Expanded(child: queue),
-      ]);
-    });
+      }),
+    );
+  }
+}
+
+/// Baris lagu yang ringan (tanpa ListTile).
+class _TrackRow extends StatelessWidget {
+  const _TrackRow({
+    required this.entry,
+    required this.active,
+    required this.accent,
+    required this.onTap,
+    required this.onAction,
+  });
+
+  final MediaEntry entry;
+  final bool active;
+  final Color accent;
+  final VoidCallback onTap;
+  final ValueChanged<_Act> onAction;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.only(left: 16, right: 4),
+        child: Row(children: [
+          Icon(active ? Icons.graphic_eq_rounded : Icons.music_note_rounded,
+              color: active ? accent : null),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Text(entry.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(color: active ? accent : null)),
+          ),
+          PopupMenuButton<_Act>(
+            tooltip: 'Opsi',
+            icon: const Icon(Icons.more_vert_rounded),
+            onSelected: onAction,
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: _Act.next, child: Text('Putar berikutnya')),
+              PopupMenuItem(value: _Act.queue, child: Text('Tambah ke antrean')),
+              PopupMenuItem(value: _Act.playlist, child: Text('Tambah ke playlist')),
+            ],
+          ),
+        ]),
+      ),
+    );
   }
 }
