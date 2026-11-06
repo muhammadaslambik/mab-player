@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/theme/mab_theme.dart';
+import '../../core/branding/mab_logo.dart';
+import '../../core/platform.dart';
 import '../../core/theme/themed_scope.dart';
 import '../../providers.dart';
 import '../../services/playback_memory.dart';
@@ -30,6 +31,10 @@ class _HomeShellState extends ConsumerState<HomeShell> {
   @override
   void initState() {
     super.initState();
+    // Batasi cache gambar (hemat RAM; cover hanya satu per lagu aktif).
+    PaintingBinding.instance.imageCache
+      ..maximumSizeBytes = 24 << 20
+      ..maximumSize = 60;
     // Pulihkan lagu & posisi terakhir (dalam keadaan jeda).
     _memory = PlaybackMemory(ref.read(audioHandlerProvider), ref.read(storeProvider))
       ..start();
@@ -53,7 +58,8 @@ class _HomeShellState extends ConsumerState<HomeShell> {
     return ThemedScope(
       child: Backdrop(
         child: LayoutBuilder(builder: (context, box) {
-          final wide = box.maxWidth >= 800;
+          // Navigasi mengikuti platform: ponsel = bar bawah, desktop/tablet = rail samping.
+          final wide = formFactorOf(context) != FormFactor.phone;
           return Scaffold(
             backgroundColor: Colors.transparent,
             body: SafeArea(
@@ -134,15 +140,5 @@ class _Logo extends StatelessWidget {
   const _Logo();
 
   @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final g = context.mab.gradient ?? [cs.primary, cs.secondary];
-    return ShaderMask(
-      shaderCallback: (r) => LinearGradient(
-        colors: g.length > 1 ? g : [g.first, g.first],
-      ).createShader(r),
-      blendMode: BlendMode.srcIn,
-      child: const Icon(Icons.graphic_eq_rounded, size: 34, color: Colors.white),
-    );
-  }
+  Widget build(BuildContext context) => const MabLogo(size: 40);
 }

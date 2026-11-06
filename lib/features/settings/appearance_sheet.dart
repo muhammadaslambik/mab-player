@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/platform.dart';
 import '../../core/theme/mab_theme.dart';
 import 'settings_provider.dart';
 
@@ -53,7 +54,8 @@ class _AppearanceSheet extends ConsumerWidget {
                 onTap: () => n.pickTheme(p.id),
               ),
           ]),
-          choices(
+          if (formFactorOf(context) != FormFactor.phone)
+            choices(
             'Tata letak musik',
             const {
               'auto': 'Otomatis',

@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/platform.dart';
 import '../../core/theme/mab_theme.dart';
 import '../../providers.dart';
 
@@ -71,7 +72,9 @@ final appSettingsProvider =
     Provider<AppSettings>((ref) => ref.watch(settingsProvider).value ?? const AppSettings());
 
 /// Mode tata letak halaman musik: 'split' | 'stage' | 'compact'.
-String resolveLayout(String setting, double width) {
-  if (width < 820) return 'compact';
+/// Ponsel selalu 'compact' (daftar + kartu mini); desktop/tablet memilih
+/// sesuai pengaturan bila ruangnya cukup.
+String resolveLayout(String setting, double width, FormFactor ff) {
+  if (ff == FormFactor.phone || width < 820) return 'compact';
   return setting == 'auto' ? 'split' : setting;
 }

@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert' show utf8;
 import 'dart:io';
 import 'dart:math' show min;
 import 'dart:typed_data';
@@ -30,6 +29,20 @@ class MabAudioHandler extends BaseAudioHandler with SeekHandler {
       final cur = mediaItem.value;
       if (cur != null && d > Duration.zero) mediaItem.add(cur.copyWith(duration: d));
     });
+    unawaited(_tune());
+  }
+
+  /// Hemat RAM/CPU tanpa mengurangi kualitas suara: cover tertanam tidak
+  /// didekode sebagai video, dan cache baca-ke-depan dibatasi (cukup untuk file lokal).
+  Future<void> _tune() async {
+    try {
+      final native = player.platform as dynamic;
+      await native.setProperty('audio-display', 'no');
+      await native.setProperty('demuxer-max-bytes', '8MiB');
+      await native.setProperty('demuxer-max-back-bytes', '2MiB');
+    } catch (_) {
+      // Properti tidak tersedia di platform ini: pakai bawaan.
+    }
   }
 
   final Player player = Player();
@@ -43,7 +56,7 @@ class MabAudioHandler extends BaseAudioHandler with SeekHandler {
   final ValueNotifier<Color?> accent = ValueNotifier<Color?>(null);
 
   /// Lirik tersinkron (.lrc di samping file lagu); kosong bila tidak ada.
-  final ValueNotifier<List<LyricLine>> lyrics = ValueNotifier<List<LyricLine>>(const []);
+  final ValueNotifier<Lyrics> lyrics = ValueNotifier<Lyrics>(Lyrics.empty);
 
   /// Preset equalizer aktif.
   final ValueNotifier<String> eq = ValueNotifier<String>('flat');
@@ -83,7 +96,7 @@ class MabAudioHandler extends BaseAudioHandler with SeekHandler {
       // Tag tidak terbaca atau format tidak didukung: pakai nama file.
     }
     cover.value = art;
-    lyrics.value = _loadLrc(base.id);
+    lyrics.value = loadLyricsFor(base.id);
     if (art == null) {
       accent.value = null;
     } else {
@@ -92,18 +105,6 @@ class MabAudioHandler extends BaseAudioHandler with SeekHandler {
       });
     }
     mediaItem.add(item);
-  }
-
-  List<LyricLine> _loadLrc(String audioPath) {
-    try {
-      final dot = audioPath.lastIndexOf('.');
-      final stem = dot > 0 ? audioPath.substring(0, dot) : audioPath;
-      final f = File('$stem.lrc');
-      if (!f.existsSync()) return const [];
-      return parseLrc(utf8.decode(f.readAsBytesSync(), allowMalformed: true));
-    } catch (_) {
-      return const [];
-    }
   }
 
   static const _eqPresets = <String, String>{

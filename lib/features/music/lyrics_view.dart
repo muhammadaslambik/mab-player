@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import '../../services/audio_handler.dart';
 import '../../services/lyrics.dart';
 
-/// Lirik tersinkron (file .lrc di samping lagu). Tidak tampil bila tidak ada.
+/// Lirik tersinkron 3/5 baris di bawah judul (hanya bila ada file .lrc).
 /// Ketuk sebuah baris untuk loncat ke waktunya.
 class LyricsView extends StatelessWidget {
   const LyricsView({super.key, required this.handler, this.radius = 1});
@@ -14,11 +14,11 @@ class LyricsView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ValueListenableBuilder<List<LyricLine>>(
+    return ValueListenableBuilder<Lyrics>(
       valueListenable: handler.lyrics,
-      builder: (context, lines, _) {
-        if (lines.isEmpty) return const SizedBox.shrink();
-        return _Synced(handler: handler, lines: lines, radius: radius);
+      builder: (context, l, _) {
+        if (l.isEmpty || !l.synced) return const SizedBox.shrink();
+        return _Synced(handler: handler, lines: l.lines, radius: radius);
       },
     );
   }
@@ -30,21 +30,6 @@ class _Synced extends StatelessWidget {
   final List<LyricLine> lines;
   final int radius;
 
-  int _indexAt(Duration p) {
-    final t = p + const Duration(milliseconds: 150);
-    var lo = 0, hi = lines.length - 1, ans = -1;
-    while (lo <= hi) {
-      final mid = (lo + hi) >> 1;
-      if (lines[mid].at <= t) {
-        ans = mid;
-        lo = mid + 1;
-      } else {
-        hi = mid - 1;
-      }
-    }
-    return ans;
-  }
-
   @override
   Widget build(BuildContext context) {
     final player = handler.player;
@@ -55,8 +40,8 @@ class _Synced extends StatelessWidget {
       child: SizedBox(
         height: (2 * radius + 1) * 38.0,
         child: StreamBuilder<int>(
-          stream: player.stream.position.map(_indexAt).distinct(),
-          initialData: _indexAt(player.state.position),
+          stream: player.stream.position.map((p) => lyricIndexAt(lines, p)).distinct(),
+          initialData: lyricIndexAt(lines, player.state.position),
           builder: (context, snap) {
             final i = snap.data ?? -1;
             final from = math.max(0, i - radius);

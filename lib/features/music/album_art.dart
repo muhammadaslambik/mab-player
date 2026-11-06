@@ -1,9 +1,11 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart' show Player;
 
+import '../../core/app_activity.dart';
 import '../../core/theme/mab_theme.dart';
 
 /// Cover lagu dengan tiga gaya: 'square', 'circle', 'vinyl' (berputar saat main).
@@ -29,24 +31,32 @@ class AlbumArt extends StatefulWidget {
   State<AlbumArt> createState() => _AlbumArtState();
 }
 
-class _AlbumArtState extends State<AlbumArt> with SingleTickerProviderStateMixin {
-  late final AnimationController _spin =
-      AnimationController(vsync: this, duration: const Duration(seconds: 18));
+class _AlbumArtState extends State<AlbumArt> {
+  // Putaran vinyl digerakkan timer ~16 fps (hemat CPU), bukan 60 fps.
+  final _turns = ValueNotifier<double>(0);
+  Timer? _timer;
   StreamSubscription<bool>? _sub;
 
   @override
   void initState() {
     super.initState();
     _sub = widget.player.stream.playing.listen((_) => _sync());
+    AppActivity.instance.active.addListener(_sync);
     _sync();
   }
 
   void _sync() {
-    final go = widget.anim && widget.style == 'vinyl' && widget.player.state.playing;
+    final go = widget.anim &&
+        widget.style == 'vinyl' &&
+        widget.player.state.playing &&
+        AppActivity.instance.active.value;
     if (go) {
-      if (!_spin.isAnimating) _spin.repeat();
+      _timer ??= Timer.periodic(const Duration(milliseconds: 60), (_) {
+        _turns.value = (_turns.value + 0.06 / 18) % 1.0;
+      });
     } else {
-      _spin.stop();
+      _timer?.cancel();
+      _timer = null;
     }
   }
 
@@ -58,8 +68,10 @@ class _AlbumArtState extends State<AlbumArt> with SingleTickerProviderStateMixin
 
   @override
   void dispose() {
+    AppActivity.instance.active.removeListener(_sync);
+    _timer?.cancel();
     _sub?.cancel();
-    _spin.dispose();
+    _turns.dispose();
     super.dispose();
   }
 
@@ -97,35 +109,33 @@ class _AlbumArtState extends State<AlbumArt> with SingleTickerProviderStateMixin
     final cs = Theme.of(context).colorScheme;
     final tk = context.mab;
     final ring = tk.gradient ?? [cs.primary, cs.secondary, cs.primary];
-    final glow = tk.glow
-        ? [BoxShadow(color: cs.primary.withAlpha(90), blurRadius: 36, spreadRadius: -6)]
-        : const <BoxShadow>[];
+
+    // Cincin gradien digambar sekali di layer sendiri (statis, di-cache GPU);
+    // hanya piringan vinyl di atasnya yang berputar. Tanpa bayangan blur
+    // (mahal di GPU); cahaya sudah diberikan oleh _Glow di belakang cover.
+    Widget ringLayer() => RepaintBoundary(
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              gradient: SweepGradient(colors: [...ring, ring.first]),
+            ),
+          ),
+        );
 
     final Widget art;
     switch (widget.style) {
       case 'circle':
-        art = DecoratedBox(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            boxShadow: glow,
-            gradient: SweepGradient(colors: [...ring, ring.first]),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.all(4),
-            child: ClipOval(child: _image()),
-          ),
-        );
+        art = Stack(fit: StackFit.expand, children: [
+          ringLayer(),
+          Padding(padding: const EdgeInsets.all(4), child: ClipOval(child: _image())),
+        ]);
       case 'vinyl':
-        art = DecoratedBox(
-          decoration: BoxDecoration(
-            shape: BoxShape.circle,
-            boxShadow: glow,
-            gradient: SweepGradient(colors: [...ring, ring.first]),
-          ),
-          child: Padding(
+        art = Stack(fit: StackFit.expand, children: [
+          ringLayer(),
+          Padding(
             padding: const EdgeInsets.all(3),
-            child: RotationTransition(
-              turns: _spin,
+            child: ValueListenableBuilder<double>(
+              valueListenable: _turns,
               child: RepaintBoundary(
                 child: CustomPaint(
                   painter: const _VinylPainter(),
@@ -148,14 +158,13 @@ class _AlbumArtState extends State<AlbumArt> with SingleTickerProviderStateMixin
                   ),
                 ),
               ),
+              builder: (_, t, child) =>
+                  Transform.rotate(angle: t * 2 * math.pi, child: child),
             ),
           ),
-        );
+        ]);
       default:
-        art = DecoratedBox(
-          decoration: BoxDecoration(borderRadius: BorderRadius.circular(24), boxShadow: glow),
-          child: ClipRRect(borderRadius: BorderRadius.circular(24), child: _image()),
-        );
+        art = ClipRRect(borderRadius: BorderRadius.circular(24), child: _image());
     }
 
     return ConstrainedBox(

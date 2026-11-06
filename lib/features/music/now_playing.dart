@@ -4,16 +4,23 @@ import 'package:audio_service/audio_service.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/platform.dart';
 import '../../core/theme/mab_theme.dart';
 import '../../services/audio_handler.dart';
+import '../../services/lyrics.dart';
 import '../settings/settings_provider.dart';
 import 'album_art.dart';
+import 'lyrics_panel.dart';
 import 'lyrics_view.dart';
+import 'queue_panel.dart';
 import 'waveform_seek_bar.dart';
 
 class NowPlaying extends ConsumerWidget {
-  const NowPlaying({super.key, required this.handler, this.big = false});
+  const NowPlaying({super.key, required this.handler, this.big = false, this.artSize});
   final MabAudioHandler handler;
+
+  /// Ukuran cover; null = otomatis (260, atau 340 bila [big]).
+  final double? artSize;
 
   /// Versi besar (layout Stage / pemutar penuh): cover lebih besar, lirik 5 baris.
   final bool big;
@@ -40,7 +47,7 @@ class NowPlaying extends ConsumerWidget {
                   seed: seed,
                   cover: cover,
                   player: handler.player,
-                  size: big ? 340 : 260,
+                  size: artSize ?? (big ? 340 : 260),
                   anim: st.anim,
                 ),
               ),
@@ -101,7 +108,7 @@ class _Glow extends StatelessWidget {
       decoration: BoxDecoration(
         gradient: RadialGradient(
           colors: [cs.primary.withAlpha(strong ? 70 : 36), cs.primary.withAlpha(0)],
-          radius: 0.75,
+          radius: 0.5,
         ),
       ),
       child: child,
@@ -185,7 +192,8 @@ class _Controls extends StatelessWidget {
   }
 }
 
-/// Sleep timer, equalizer, dan volume.
+/// Sleep timer, equalizer, lirik, antrean, dan volume (volume hanya di desktop;
+/// di ponsel volume diatur tombol fisik).
 class _Tools extends StatelessWidget {
   const _Tools({required this.handler});
   final MabAudioHandler handler;
@@ -197,58 +205,78 @@ class _Tools extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final small = Theme.of(context).textTheme.labelMedium;
-    return Row(children: [
-      ValueListenableBuilder<DateTime?>(
-        valueListenable: handler.sleepAt,
-        builder: (context, at, _) => PopupMenuButton<int>(
-          tooltip: 'Sleep timer',
-          onSelected: (m) => handler.setSleepTimer(m == 0 ? null : Duration(minutes: m)),
-          itemBuilder: (_) => [
-            for (final m in const [15, 30, 45, 60])
-              PopupMenuItem(value: m, child: Text('$m menit')),
-            if (at != null) const PopupMenuItem(value: 0, child: Text('Matikan timer')),
-          ],
-          child: Padding(
-            padding: const EdgeInsets.all(8),
-            child: Row(mainAxisSize: MainAxisSize.min, children: [
-              Icon(Icons.bedtime_outlined, size: 20, color: at == null ? null : cs.primary),
-              if (at != null) ...[
-                const SizedBox(width: 4),
-                Text(_hm(at), style: small?.copyWith(color: cs.primary)),
-              ],
-            ]),
+    return Row(
+      mainAxisAlignment: isMobilePlatform ? MainAxisAlignment.spaceEvenly : MainAxisAlignment.start,
+      children: [
+        ValueListenableBuilder<DateTime?>(
+          valueListenable: handler.sleepAt,
+          builder: (context, at, _) => PopupMenuButton<int>(
+            tooltip: 'Sleep timer',
+            onSelected: (m) => handler.setSleepTimer(m == 0 ? null : Duration(minutes: m)),
+            itemBuilder: (_) => [
+              for (final m in const [15, 30, 45, 60])
+                PopupMenuItem(value: m, child: Text('$m menit')),
+              if (at != null) const PopupMenuItem(value: 0, child: Text('Matikan timer')),
+            ],
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Row(mainAxisSize: MainAxisSize.min, children: [
+                Icon(Icons.bedtime_outlined, size: 20, color: at == null ? null : cs.primary),
+                if (at != null) ...[
+                  const SizedBox(width: 4),
+                  Text(_hm(at), style: small?.copyWith(color: cs.primary)),
+                ],
+              ]),
+            ),
           ),
         ),
-      ),
-      ValueListenableBuilder<String>(
-        valueListenable: handler.eq,
-        builder: (context, id, _) => PopupMenuButton<String>(
-          tooltip: 'Equalizer',
-          initialValue: id,
-          onSelected: (v) async {
-            final ok = await handler.setEq(v);
-            if (!ok && context.mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-                  content: Text('Equalizer tidak tersedia di perangkat ini')));
-            }
-          },
-          itemBuilder: (_) => const [
-            PopupMenuItem(value: 'flat', child: Text('Equalizer: mati')),
-            PopupMenuItem(value: 'bass', child: Text('Bass boost')),
-            PopupMenuItem(value: 'treble', child: Text('Treble')),
-            PopupMenuItem(value: 'vocal', child: Text('Vokal')),
-            PopupMenuItem(value: 'loud', child: Text('Loudness')),
-          ],
-          child: Padding(
-            padding: const EdgeInsets.all(8),
-            child: Icon(Icons.equalizer_rounded,
-                size: 20, color: id == 'flat' ? null : cs.primary),
+        ValueListenableBuilder<String>(
+          valueListenable: handler.eq,
+          builder: (context, id, _) => PopupMenuButton<String>(
+            tooltip: 'Equalizer',
+            initialValue: id,
+            onSelected: (v) async {
+              final ok = await handler.setEq(v);
+              if (!ok && context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+                    content: Text('Equalizer tidak tersedia di perangkat ini')));
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'flat', child: Text('Equalizer: mati')),
+              PopupMenuItem(value: 'bass', child: Text('Bass boost')),
+              PopupMenuItem(value: 'treble', child: Text('Treble')),
+              PopupMenuItem(value: 'vocal', child: Text('Vokal')),
+              PopupMenuItem(value: 'loud', child: Text('Loudness')),
+            ],
+            child: Padding(
+              padding: const EdgeInsets.all(10),
+              child: Icon(Icons.equalizer_rounded,
+                  size: 20, color: id == 'flat' ? null : cs.primary),
+            ),
           ),
         ),
-      ),
-      const SizedBox(width: 4),
-      Expanded(child: _VolumeBar(handler: handler)),
-    ]);
+        ValueListenableBuilder<Lyrics>(
+          valueListenable: handler.lyrics,
+          builder: (context, l, _) => IconButton(
+            tooltip: l.isEmpty ? 'Lirik (tidak ada file .lrc/.txt)' : 'Lirik',
+            iconSize: 20,
+            icon: Icon(Icons.lyrics_outlined, color: l.isEmpty ? null : cs.primary),
+            onPressed: () => showLyricsSheet(context, handler),
+          ),
+        ),
+        IconButton(
+          tooltip: 'Antrean',
+          iconSize: 20,
+          icon: const Icon(Icons.queue_music_rounded),
+          onPressed: () => showQueueSheet(context, handler),
+        ),
+        if (!isMobilePlatform) ...[
+          const SizedBox(width: 4),
+          Expanded(child: _VolumeBar(handler: handler)),
+        ],
+      ],
+    );
   }
 }
 

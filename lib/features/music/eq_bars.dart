@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import 'package:media_kit/media_kit.dart' show Player;
 
-/// Tiga batang equalizer kecil yang menari saat musik main (hanya dipakai
-/// pada baris lagu aktif, jadi hanya satu controller yang berjalan).
+import '../../core/app_activity.dart';
+
+/// Tiga batang equalizer kecil yang menari saat musik main. Hemat CPU:
+/// digerakkan timer ~11 fps (bukan 60 fps) dan berhenti total saat jeda.
 class EqBars extends StatefulWidget {
   const EqBars({
     super.key,
@@ -24,24 +27,30 @@ class EqBars extends StatefulWidget {
   State<EqBars> createState() => _EqBarsState();
 }
 
-class _EqBarsState extends State<EqBars> with SingleTickerProviderStateMixin {
-  late final AnimationController _c =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 900));
+class _EqBarsState extends State<EqBars> {
+  final _phase = ValueNotifier<double>(0);
+  Timer? _timer;
   StreamSubscription<bool>? _sub;
 
   @override
   void initState() {
     super.initState();
     _sub = widget.player.stream.playing.listen((_) => _sync());
+    AppActivity.instance.active.addListener(_sync);
     _sync();
   }
 
   void _sync() {
-    final go = widget.animate && widget.player.state.playing;
+    final go = widget.animate &&
+        widget.player.state.playing &&
+        AppActivity.instance.active.value;
     if (go) {
-      if (!_c.isAnimating) _c.repeat();
+      _timer ??= Timer.periodic(const Duration(milliseconds: 90), (_) {
+        _phase.value = (_phase.value + 0.06) % 1.0;
+      });
     } else {
-      _c.stop();
+      _timer?.cancel();
+      _timer = null;
     }
   }
 
@@ -53,8 +62,10 @@ class _EqBarsState extends State<EqBars> with SingleTickerProviderStateMixin {
 
   @override
   void dispose() {
+    AppActivity.instance.active.removeListener(_sync);
+    _timer?.cancel();
     _sub?.cancel();
-    _c.dispose();
+    _phase.dispose();
     super.dispose();
   }
 
@@ -62,14 +73,14 @@ class _EqBarsState extends State<EqBars> with SingleTickerProviderStateMixin {
   Widget build(BuildContext context) => RepaintBoundary(
         child: CustomPaint(
           size: Size.square(widget.size),
-          painter: _EqPainter(_c, widget.color),
+          painter: _EqPainter(_phase, widget.color),
         ),
       );
 }
 
 class _EqPainter extends CustomPainter {
-  _EqPainter(this.anim, this.color) : super(repaint: anim);
-  final Animation<double> anim;
+  _EqPainter(this.phase, this.color) : super(repaint: phase);
+  final ValueListenable<double> phase;
   final Color color;
 
   @override
@@ -78,10 +89,10 @@ class _EqPainter extends CustomPainter {
       ..color = color
       ..strokeCap = StrokeCap.round
       ..strokeWidth = size.width / 6;
-    const speeds = [1.0, 1.6, 1.25];
-    const phases = [0.0, 0.33, 0.66];
+    const speeds = [2.0, 3.0, 1.0];
+    const offs = [0.0, 0.33, 0.66];
     for (var i = 0; i < 3; i++) {
-      final s = math.sin(2 * math.pi * (anim.value * speeds[i] + phases[i]));
+      final s = math.sin(2 * math.pi * (phase.value * speeds[i] + offs[i]));
       final h = size.height * (0.3 + 0.7 * (0.5 + 0.5 * s));
       final x = size.width * (0.2 + 0.3 * i);
       canvas.drawLine(Offset(x, size.height - 1), Offset(x, size.height - h), paint);

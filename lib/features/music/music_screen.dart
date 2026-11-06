@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:media_kit/media_kit.dart' show Player;
 
+import '../../core/platform.dart';
 import '../../core/theme/mab_theme.dart';
 import '../../data/models/media_entry.dart';
 import '../../providers.dart';
@@ -226,7 +227,7 @@ class _MusicScreenState extends ConsumerState<MusicScreen> {
     return AccentScope(
       handler: handler,
       child: LayoutBuilder(builder: (context, box) {
-        final mode = resolveLayout(layoutSetting, box.maxWidth);
+        final mode = resolveLayout(layoutSetting, box.maxWidth, formFactorOf(context));
         if (mode == 'stage') {
           return Row(children: [
             Expanded(child: _panel(context, NowPlaying(handler: handler, big: true))),
