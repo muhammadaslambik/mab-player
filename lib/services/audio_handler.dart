@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert' show utf8;
 import 'dart:io';
 import 'dart:math' show min;
 import 'dart:typed_data';
@@ -12,6 +13,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:path/path.dart' as pth;
 
 import '../data/models/media_entry.dart';
+import 'lyrics.dart';
 
 /// Pemegang player musik. Hidup selama aplikasi jalan, sehingga musik tetap
 /// main di background dan tampil di notifikasi / lock-screen.
@@ -39,6 +41,16 @@ class MabAudioHandler extends BaseAudioHandler with SeekHandler {
 
   /// Warna aksen dari cover (null = warna tema bawaan).
   final ValueNotifier<Color?> accent = ValueNotifier<Color?>(null);
+
+  /// Lirik tersinkron (.lrc di samping file lagu); kosong bila tidak ada.
+  final ValueNotifier<List<LyricLine>> lyrics = ValueNotifier<List<LyricLine>>(const []);
+
+  /// Preset equalizer aktif.
+  final ValueNotifier<String> eq = ValueNotifier<String>('flat');
+
+  /// Info lagu aktif tanpa emisi berulang (mis. saat durasi diperbarui).
+  late final Stream<MediaItem?> trackInfo = mediaItem.distinct(
+      (a, b) => a?.id == b?.id && a?.title == b?.title && a?.artist == b?.artist);
 
   /// Waktu sleep timer berakhir (null = mati).
   final ValueNotifier<DateTime?> sleepAt = ValueNotifier<DateTime?>(null);
@@ -71,6 +83,7 @@ class MabAudioHandler extends BaseAudioHandler with SeekHandler {
       // Tag tidak terbaca atau format tidak didukung: pakai nama file.
     }
     cover.value = art;
+    lyrics.value = _loadLrc(base.id);
     if (art == null) {
       accent.value = null;
     } else {
@@ -79,6 +92,39 @@ class MabAudioHandler extends BaseAudioHandler with SeekHandler {
       });
     }
     mediaItem.add(item);
+  }
+
+  List<LyricLine> _loadLrc(String audioPath) {
+    try {
+      final dot = audioPath.lastIndexOf('.');
+      final stem = dot > 0 ? audioPath.substring(0, dot) : audioPath;
+      final f = File('$stem.lrc');
+      if (!f.existsSync()) return const [];
+      return parseLrc(utf8.decode(f.readAsBytesSync(), allowMalformed: true));
+    } catch (_) {
+      return const [];
+    }
+  }
+
+  static const _eqPresets = <String, String>{
+    'flat': '',
+    'bass': 'equalizer=f=60:t=q:w=1:g=6,equalizer=f=170:t=q:w=1:g=3',
+    'treble': 'equalizer=f=4000:t=q:w=1:g=4,equalizer=f=10000:t=q:w=1:g=6',
+    'vocal': 'equalizer=f=250:t=q:w=1:g=-2,equalizer=f=2000:t=q:w=1:g=4,equalizer=f=4000:t=q:w=1:g=2',
+    'loud': 'equalizer=f=60:t=q:w=1:g=5,equalizer=f=1000:t=q:w=1:g=-2,equalizer=f=10000:t=q:w=1:g=5',
+  };
+
+  /// Pasang preset equalizer lewat filter audio libmpv. false = gagal.
+  Future<bool> setEq(String id) async {
+    try {
+      final f = _eqPresets[id] ?? '';
+      final native = player.platform as dynamic;
+      await native.setProperty('af', f.isEmpty ? '' : 'lavfi=[$f]');
+      eq.value = id;
+      return true;
+    } catch (_) {
+      return false;
+    }
   }
 
   /// Warna dominan ringan: cover dikecilkan ke ~24 px lalu dirata-rata,

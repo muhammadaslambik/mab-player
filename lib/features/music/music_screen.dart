@@ -1,10 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:media_kit/media_kit.dart' show Player;
 
+import '../../core/theme/mab_theme.dart';
 import '../../data/models/media_entry.dart';
 import '../../providers.dart';
 import '../playlists/playlist_actions.dart';
+import '../settings/appearance_sheet.dart';
+import '../settings/settings_provider.dart';
 import 'accent_scope.dart';
+import 'eq_bars.dart';
+import 'mini_player.dart';
 import 'now_playing.dart';
 
 enum _Sort { scan, titleAsc, titleDesc }
@@ -31,7 +37,7 @@ class _MusicScreenState extends ConsumerState<MusicScreen> {
 
   // Hanya berubah bila lagu aktif ganti (bukan tiap update durasi/tag).
   late final Stream<String?> _ids =
-      ref.read(audioHandlerProvider).mediaItem.map((m) => m?.id).distinct();
+      ref.read(audioHandlerProvider).trackInfo.map((m) => m?.id).distinct();
 
   @override
   void dispose() {
@@ -80,51 +86,87 @@ class _MusicScreenState extends ConsumerState<MusicScreen> {
     }
   }
 
-  Widget _header() => Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 4, 4),
-        child: Row(children: [
-          Expanded(
-            child: TextField(
-              controller: _search,
-              onChanged: (v) => setState(() => _query = v),
-              decoration: InputDecoration(
-                hintText: 'Cari lagu',
-                isDense: true,
-                prefixIcon: const Icon(Icons.search_rounded),
-                suffixIcon: _query.isEmpty
-                    ? null
-                    : IconButton(
-                        tooltip: 'Bersihkan',
-                        icon: const Icon(Icons.close_rounded),
-                        onPressed: () {
-                          _search.clear();
-                          setState(() => _query = '');
-                        },
-                      ),
-                border: const OutlineInputBorder(
-                    borderRadius: BorderRadius.all(Radius.circular(24))),
+  Widget _header(int total) {
+    final tk = context.mab;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 4, 4),
+      child: Row(children: [
+        Expanded(
+          child: TextField(
+            controller: _search,
+            onChanged: (v) => setState(() => _query = v),
+            decoration: InputDecoration(
+              hintText: 'Cari di $total lagu',
+              isDense: true,
+              filled: true,
+              fillColor: tk.panel,
+              prefixIcon: const Icon(Icons.search_rounded),
+              suffixIcon: _query.isEmpty
+                  ? null
+                  : IconButton(
+                      tooltip: 'Bersihkan',
+                      icon: const Icon(Icons.close_rounded),
+                      onPressed: () {
+                        _search.clear();
+                        setState(() => _query = '');
+                      },
+                    ),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(24),
+                borderSide: BorderSide(color: tk.border),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(24),
+                borderSide: BorderSide(color: tk.border),
               ),
             ),
           ),
-          PopupMenuButton<_Sort>(
-            tooltip: 'Urutkan',
-            icon: const Icon(Icons.sort_rounded),
-            initialValue: _sort,
-            onSelected: (s) => setState(() => _sort = s),
-            itemBuilder: (_) => const [
-              PopupMenuItem(value: _Sort.scan, child: Text('Bawaan')),
-              PopupMenuItem(value: _Sort.titleAsc, child: Text('Judul A–Z')),
-              PopupMenuItem(value: _Sort.titleDesc, child: Text('Judul Z–A')),
-            ],
-          ),
-        ]),
-      );
+        ),
+        PopupMenuButton<_Sort>(
+          tooltip: 'Urutkan',
+          icon: const Icon(Icons.sort_rounded),
+          initialValue: _sort,
+          onSelected: (s) => setState(() => _sort = s),
+          itemBuilder: (_) => const [
+            PopupMenuItem(value: _Sort.scan, child: Text('Bawaan')),
+            PopupMenuItem(value: _Sort.titleAsc, child: Text('Judul A–Z')),
+            PopupMenuItem(value: _Sort.titleDesc, child: Text('Judul Z–A')),
+          ],
+        ),
+        IconButton(
+          tooltip: 'Tampilan',
+          icon: const Icon(Icons.palette_outlined),
+          onPressed: () => showAppearanceSheet(context),
+        ),
+      ]),
+    );
+  }
+
+  Widget _panel(BuildContext context, Widget child) {
+    final tk = context.mab;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 6, 8),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: tk.panel,
+          borderRadius: BorderRadius.circular(28),
+          border: Border.all(color: tk.border),
+        ),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(28),
+          child: Center(child: SingleChildScrollView(child: child)),
+        ),
+      ),
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
     final all = ref.watch(audioLibraryProvider);
     final loading = ref.watch(libraryProvider).isLoading;
     final handler = ref.watch(audioHandlerProvider);
+    final layoutSetting = ref.watch(appSettingsProvider.select((s) => s.layout));
+    final anim = ref.watch(appSettingsProvider.select((s) => s.anim));
 
     if (all.isEmpty) {
       return Center(
@@ -152,18 +194,21 @@ class _MusicScreenState extends ConsumerState<MusicScreen> {
         ? const Center(child: Text('Tidak ada lagu yang cocok'))
         : StreamBuilder<String?>(
             stream: _ids,
+            initialData: handler.mediaItem.value?.id,
             builder: (context, snap) {
               final currentId = snap.data;
               final accent = Theme.of(context).colorScheme.primary;
               return ListView.builder(
                 itemCount: items.length,
-                itemExtent: 60,
+                itemExtent: 64,
                 itemBuilder: (_, i) {
                   final e = items[i];
                   return _TrackRow(
                     entry: e,
                     active: e.path == currentId,
                     accent: accent,
+                    player: handler.player,
+                    anim: anim,
                     // Antrean = daftar yang sedang tampil (hasil cari/urut).
                     onTap: () => handler.setQueue(items, index: i),
                     onAction: (a) => _onAction(a, e),
@@ -174,27 +219,29 @@ class _MusicScreenState extends ConsumerState<MusicScreen> {
           );
 
     final queue = Column(children: [
-      _header(),
+      _header(all.length),
       Expanded(child: list),
     ]);
 
     return AccentScope(
       handler: handler,
       child: LayoutBuilder(builder: (context, box) {
-        if (box.maxWidth >= 800) {
+        final mode = resolveLayout(layoutSetting, box.maxWidth);
+        if (mode == 'stage') {
           return Row(children: [
-            SizedBox(
-                width: 400,
-                child: Center(
-                    child: SingleChildScrollView(child: NowPlaying(handler: handler)))),
-            const VerticalDivider(width: 1),
+            Expanded(child: _panel(context, NowPlaying(handler: handler, big: true))),
+            SizedBox(width: 380, child: queue),
+          ]);
+        }
+        if (mode == 'split') {
+          return Row(children: [
+            SizedBox(width: 410, child: _panel(context, NowPlaying(handler: handler))),
             Expanded(child: queue),
           ]);
         }
         return Column(children: [
-          NowPlaying(handler: handler),
-          const Divider(height: 1),
           Expanded(child: queue),
+          const MiniPlayer(),
         ]);
       }),
     );
@@ -207,6 +254,8 @@ class _TrackRow extends StatelessWidget {
     required this.entry,
     required this.active,
     required this.accent,
+    required this.player,
+    required this.anim,
     required this.onTap,
     required this.onAction,
   });
@@ -214,24 +263,43 @@ class _TrackRow extends StatelessWidget {
   final MediaEntry entry;
   final bool active;
   final Color accent;
+  final Player player;
+  final bool anim;
   final VoidCallback onTap;
   final ValueChanged<_Act> onAction;
 
   @override
   Widget build(BuildContext context) {
+    final on = Theme.of(context).colorScheme.onSurface;
     return InkWell(
       onTap: onTap,
       child: Padding(
         padding: const EdgeInsets.only(left: 16, right: 4),
         child: Row(children: [
-          Icon(active ? Icons.graphic_eq_rounded : Icons.music_note_rounded,
-              color: active ? accent : null),
-          const SizedBox(width: 16),
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: active ? accent.withAlpha(40) : on.withAlpha(14),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Center(
+              child: active
+                  ? EqBars(player: player, color: accent, animate: anim)
+                  : Icon(Icons.music_note_rounded, size: 20, color: on.withAlpha(150)),
+            ),
+          ),
+          const SizedBox(width: 14),
           Expanded(
-            child: Text(entry.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(color: active ? accent : null)),
+            child: Text(
+              entry.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: active ? accent : null,
+                fontWeight: active ? FontWeight.w600 : null,
+              ),
+            ),
           ),
           PopupMenuButton<_Act>(
             tooltip: 'Opsi',
