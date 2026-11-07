@@ -48,7 +48,7 @@ class NowPlaying extends ConsumerWidget {
                   cover: cover,
                   player: handler.player,
                   size: artSize ?? (big ? 340 : 260),
-                  anim: st.anim,
+                  motion: st.motion,
                 ),
               ),
             ),

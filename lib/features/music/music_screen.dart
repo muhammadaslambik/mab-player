@@ -167,7 +167,7 @@ class _MusicScreenState extends ConsumerState<MusicScreen> {
     final loading = ref.watch(libraryProvider).isLoading;
     final handler = ref.watch(audioHandlerProvider);
     final layoutSetting = ref.watch(appSettingsProvider.select((s) => s.layout));
-    final anim = ref.watch(appSettingsProvider.select((s) => s.anim));
+    final motion = ref.watch(appSettingsProvider.select((s) => s.motion));
 
     if (all.isEmpty) {
       return Center(
@@ -209,7 +209,7 @@ class _MusicScreenState extends ConsumerState<MusicScreen> {
                     active: e.path == currentId,
                     accent: accent,
                     player: handler.player,
-                    anim: anim,
+                    motion: motion,
                     // Antrean = daftar yang sedang tampil (hasil cari/urut).
                     onTap: () => handler.setQueue(items, index: i),
                     onAction: (a) => _onAction(a, e),
@@ -256,7 +256,7 @@ class _TrackRow extends StatelessWidget {
     required this.active,
     required this.accent,
     required this.player,
-    required this.anim,
+    required this.motion,
     required this.onTap,
     required this.onAction,
   });
@@ -265,7 +265,7 @@ class _TrackRow extends StatelessWidget {
   final bool active;
   final Color accent;
   final Player player;
-  final bool anim;
+  final String motion;
   final VoidCallback onTap;
   final ValueChanged<_Act> onAction;
 
@@ -286,7 +286,7 @@ class _TrackRow extends StatelessWidget {
             ),
             child: Center(
               child: active
-                  ? EqBars(player: player, color: accent, animate: anim)
+                  ? EqBars(player: player, color: accent, motion: motion)
                   : Icon(Icons.music_note_rounded, size: 20, color: on.withAlpha(150)),
             ),
           ),

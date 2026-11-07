@@ -10,26 +10,26 @@ class AppSettings {
     this.layout = 'auto',
     this.art = 'square',
     this.wave = 'bars',
-    this.anim = true,
+    this.motion = 'low',
   });
 
   final String theme; // id palet
   final String layout; // auto | split | stage | compact
   final String art; // square | vinyl | circle
   final String wave; // bars | mirror | line
-  final bool anim;
+  final String motion; // off | low | full
 
-  AppSettings copyWith({String? theme, String? layout, String? art, String? wave, bool? anim}) =>
+  AppSettings copyWith({String? theme, String? layout, String? art, String? wave, String? motion}) =>
       AppSettings(
         theme: theme ?? this.theme,
         layout: layout ?? this.layout,
         art: art ?? this.art,
         wave: wave ?? this.wave,
-        anim: anim ?? this.anim,
+        motion: motion ?? this.motion,
       );
 
   Map<String, dynamic> toJson() =>
-      {'theme': theme, 'layout': layout, 'art': art, 'wave': wave, 'anim': anim};
+      {'theme': theme, 'layout': layout, 'art': art, 'wave': wave, 'motion': motion};
 
   factory AppSettings.fromJson(Map<String, dynamic> j) {
     String s(Object? v, String d) => v is String ? v : d;
@@ -38,7 +38,8 @@ class AppSettings {
       layout: s(j['layout'], 'auto'),
       art: s(j['art'], 'square'),
       wave: s(j['wave'], 'bars'),
-      anim: j['anim'] is bool ? j['anim'] as bool : true,
+      // Pengaturan lama memakai sakelar 'anim' (true/false).
+      motion: j['motion'] is String ? j['motion'] as String : (j['anim'] == false ? 'off' : 'low'),
     );
   }
 }

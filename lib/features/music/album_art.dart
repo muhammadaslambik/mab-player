@@ -17,7 +17,7 @@ class AlbumArt extends StatefulWidget {
     required this.cover,
     required this.player,
     this.size = 260,
-    this.anim = true,
+    this.motion = 'low',
   });
 
   final String style;
@@ -25,14 +25,14 @@ class AlbumArt extends StatefulWidget {
   final Uint8List? cover;
   final Player player;
   final double size;
-  final bool anim;
+  final String motion; // off | low | full
 
   @override
   State<AlbumArt> createState() => _AlbumArtState();
 }
 
 class _AlbumArtState extends State<AlbumArt> {
-  // Putaran vinyl digerakkan timer ~16 fps (hemat CPU), bukan 60 fps.
+  // Putaran vinyl digerakkan timer (8 fps hemat / 16 fps penuh), bukan 60 fps.
   final _turns = ValueNotifier<double>(0);
   Timer? _timer;
   StreamSubscription<bool>? _sub;
@@ -45,19 +45,25 @@ class _AlbumArtState extends State<AlbumArt> {
     _sync();
   }
 
+  int _ms = 0;
+
   void _sync() {
-    final go = widget.anim &&
+    final ms = widget.motion == 'full' ? 60 : 125;
+    final go = widget.motion != 'off' &&
         widget.style == 'vinyl' &&
         widget.player.state.playing &&
         AppActivity.instance.active.value;
-    if (go) {
-      _timer ??= Timer.periodic(const Duration(milliseconds: 60), (_) {
-        _turns.value = (_turns.value + 0.06 / 18) % 1.0;
-      });
-    } else {
+    if (!go) {
       _timer?.cancel();
       _timer = null;
+      return;
     }
+    if (_timer != null && _ms == ms) return;
+    _timer?.cancel();
+    _ms = ms;
+    _timer = Timer.periodic(Duration(milliseconds: ms), (_) {
+      _turns.value = (_turns.value + ms / 18000) % 1.0;
+    });
   }
 
   @override

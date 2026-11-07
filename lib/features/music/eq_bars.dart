@@ -8,19 +8,20 @@ import 'package:media_kit/media_kit.dart' show Player;
 import '../../core/app_activity.dart';
 
 /// Tiga batang equalizer kecil yang menari saat musik main. Hemat CPU:
-/// digerakkan timer ~11 fps (bukan 60 fps) dan berhenti total saat jeda.
+/// digerakkan timer (6 fps hemat / 11 fps penuh), berhenti total saat jeda,
+/// saat jendela tidak aktif, atau saat animasi dimatikan.
 class EqBars extends StatefulWidget {
   const EqBars({
     super.key,
     required this.player,
     required this.color,
-    this.animate = true,
+    this.motion = 'low',
     this.size = 20,
   });
 
   final Player player;
   final Color color;
-  final bool animate;
+  final String motion; // off | low | full
   final double size;
 
   @override
@@ -30,6 +31,7 @@ class EqBars extends StatefulWidget {
 class _EqBarsState extends State<EqBars> {
   final _phase = ValueNotifier<double>(0);
   Timer? _timer;
+  int _ms = 0;
   StreamSubscription<bool>? _sub;
 
   @override
@@ -41,17 +43,21 @@ class _EqBarsState extends State<EqBars> {
   }
 
   void _sync() {
-    final go = widget.animate &&
+    final ms = widget.motion == 'full' ? 90 : 170;
+    final go = widget.motion != 'off' &&
         widget.player.state.playing &&
         AppActivity.instance.active.value;
-    if (go) {
-      _timer ??= Timer.periodic(const Duration(milliseconds: 90), (_) {
-        _phase.value = (_phase.value + 0.06) % 1.0;
-      });
-    } else {
+    if (!go) {
       _timer?.cancel();
       _timer = null;
+      return;
     }
+    if (_timer != null && _ms == ms) return;
+    _timer?.cancel();
+    _ms = ms;
+    _timer = Timer.periodic(Duration(milliseconds: ms), (_) {
+      _phase.value = (_phase.value + ms / 1500) % 1.0;
+    });
   }
 
   @override

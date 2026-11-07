@@ -65,12 +65,18 @@ class _WaveformSeekBarState extends State<WaveformSeekBar> {
     }));
   }
 
+  /// Progres dibulatkan ke langkah yang terlihat (per batang / per ~2 px) supaya
+  /// kanvas tidak digambar ulang puluhan kali per detik tanpa perubahan tampilan.
+  double _quant(double f) => widget.style == 'line'
+      ? (f * 400).roundToDouble() / 400
+      : (f * _bars).floorToDouble() / _bars;
+
   void _sync() {
     final total = _duration.inMilliseconds;
     final f = total <= 0
         ? 0.0
         : (_position.inMilliseconds / total).clamp(0.0, 1.0).toDouble();
-    if (!_dragging) _progress.value = f;
+    if (!_dragging) _progress.value = _quant(f);
     _posSec.value = _position.inSeconds;
     _durSec.value = _duration.inSeconds;
   }

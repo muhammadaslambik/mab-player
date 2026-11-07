@@ -78,13 +78,17 @@ class _AppearanceSheet extends ConsumerWidget {
             s.wave,
             (v) => n.save(s.copyWith(wave: v)),
           ),
-          const SizedBox(height: 8),
-          SwitchListTile(
-            contentPadding: EdgeInsets.zero,
-            title: const Text('Animasi'),
-            subtitle: const Text('Matikan untuk menghemat CPU/baterai'),
-            value: s.anim,
-            onChanged: (v) => n.save(s.copyWith(anim: v)),
+          choices(
+            'Animasi',
+            const {'off': 'Mati', 'low': 'Hemat', 'full': 'Penuh'},
+            s.motion,
+            (v) => n.save(s.copyWith(motion: v)),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            'Hemat = gerak lebih jarang (lebih ringan di CPU/GPU). Penuh = paling halus. '
+            'Animasi otomatis berhenti saat jendela tidak aktif.',
+            style: Theme.of(context).textTheme.bodySmall,
           ),
         ]),
       ),

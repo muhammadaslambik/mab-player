@@ -43,6 +43,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
   late final HistoryRepo _history;
 
   Timer? _hideTimer;
+  DateTime _lastPoke = DateTime.fromMillisecondsSinceEpoch(0);
   bool _show = true;
   double _speed = 1.0;
   AspectMode _aspect = AspectMode.fit;
@@ -57,6 +58,7 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
 
     // Player dibuat per halaman dan di-dispose saat keluar -> tidak bocor memori.
     _player = Player();
+    unawaited(_tune());
     _controller = VideoController(
       _player,
       configuration: const VideoControllerConfiguration(enableHardwareAcceleration: true),
@@ -72,6 +74,18 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
     WakelockPlus.enable();
     _open();
     _scheduleHide();
+  }
+
+  /// Batasi cache baca-ke-depan/belakang (cukup untuk file lokal; kualitas
+  /// gambar dan suara tidak berubah, hanya memori yang lebih hemat).
+  Future<void> _tune() async {
+    try {
+      final native = _player.platform as dynamic;
+      await native.setProperty('demuxer-max-bytes', '24MiB');
+      await native.setProperty('demuxer-max-back-bytes', '8MiB');
+    } catch (_) {
+      // Properti tidak tersedia: pakai bawaan.
+    }
   }
 
   Future<void> _open() async {
@@ -107,9 +121,14 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
     });
   }
 
+  /// Dipanggil tiap gerak mouse: jadwal ulang auto-hide paling sering 4x/detik.
   void _poke() {
     if (!_show) setState(() => _show = true);
-    _scheduleHide();
+    final now = DateTime.now();
+    if (now.difference(_lastPoke) > const Duration(milliseconds: 250)) {
+      _lastPoke = now;
+      _scheduleHide();
+    }
   }
 
   void _seekBy(int seconds) {
@@ -152,16 +171,25 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
               onTap: () => setState(() => _show = !_show),
               onDoubleTap: _player.playOrPause,
               child: Stack(fit: StackFit.expand, children: [
-                Video(
-                  controller: _controller,
-                  fit: _aspect.boxFit,
-                  aspectRatio: _aspect.ratio,
-                  controls: NoVideoControls,
+                RepaintBoundary(
+                  child: Video(
+                    controller: _controller,
+                    fit: _aspect.boxFit,
+                    aspectRatio: _aspect.ratio,
+                    controls: NoVideoControls,
+                  ),
                 ),
-                AnimatedOpacity(
-                  opacity: _show ? 1 : 0,
-                  duration: const Duration(milliseconds: 200),
-                  child: IgnorePointer(ignoring: !_show, child: _overlay(context)),
+                // Overlay hanya dibangun saat terlihat: saat tersembunyi tidak
+                // ada widget yang ikut membangun ulang tiap detik video berjalan.
+                AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 180),
+                  layoutBuilder: (current, previous) => Stack(
+                    fit: StackFit.expand,
+                    children: [...previous, ?current],
+                  ),
+                  child: _show
+                      ? RepaintBoundary(key: const ValueKey('overlay'), child: _overlay(context))
+                      : const SizedBox.shrink(key: ValueKey('hidden')),
                 ),
               ]),
             ),
@@ -264,37 +292,85 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
           ]),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
-            child: StreamBuilder<Duration>(
-              stream: _player.stream.position,
-              initialData: _player.state.position,
-              builder: (_, pos) => StreamBuilder<Duration>(
-                stream: _player.stream.duration,
-                initialData: _player.state.duration,
-                builder: (_, dur) {
-                  final total = (dur.data ?? Duration.zero).inMilliseconds.toDouble();
-                  final cur = (pos.data ?? Duration.zero).inMilliseconds.toDouble();
-                  final value = (total <= 0 ? 0.0 : cur.clamp(0.0, total)).toDouble();
-                  return Row(children: [
-                    Text(fmt(pos.data ?? Duration.zero),
-                        style: const TextStyle(color: Colors.white)),
-                    Expanded(
-                      child: Slider(
-                        value: value,
-                        max: total <= 0 ? 1.0 : total,
-                        onChanged: (v) {
-                          _player.seek(Duration(milliseconds: v.round()));
-                          _poke();
-                        },
-                      ),
-                    ),
-                    Text(fmt(dur.data ?? Duration.zero),
-                        style: const TextStyle(color: Colors.white)),
-                  ]);
+            child: _SeekRow(player: _player, onTouch: _poke),
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Baris posisi video. Pembaruan dibatasi 4x/detik, dan video hanya di-seek
+/// saat slider dilepas (bukan tiap piksel geseran, yang membuat decoder bekerja
+/// keras tanpa perlu).
+class _SeekRow extends StatefulWidget {
+  const _SeekRow({required this.player, required this.onTouch});
+  final Player player;
+  final VoidCallback onTouch;
+
+  @override
+  State<_SeekRow> createState() => _SeekRowState();
+}
+
+class _SeekRowState extends State<_SeekRow> {
+  final _pos = ValueNotifier<int>(0); // ms
+  final _dur = ValueNotifier<int>(0); // ms
+  double? _drag; // ms selama slider digeser
+  final _subs = <StreamSubscription<Duration>>[];
+
+  @override
+  void initState() {
+    super.initState();
+    _pos.value = widget.player.state.position.inMilliseconds;
+    _dur.value = widget.player.state.duration.inMilliseconds;
+    _subs.add(widget.player.stream.position.listen((d) {
+      final ms = d.inMilliseconds;
+      if (_drag == null && (ms - _pos.value).abs() >= 250) _pos.value = ms;
+    }));
+    _subs.add(widget.player.stream.duration.listen((d) => _dur.value = d.inMilliseconds));
+  }
+
+  @override
+  void dispose() {
+    for (final s in _subs) {
+      s.cancel();
+    }
+    _pos.dispose();
+    _dur.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<int>(
+      valueListenable: _dur,
+      builder: (_, dur, _) => ValueListenableBuilder<int>(
+        valueListenable: _pos,
+        builder: (_, pos, _) {
+          final total = dur.toDouble();
+          final shown = _drag ?? pos.toDouble();
+          final value = (total <= 0 ? 0.0 : shown.clamp(0.0, total)).toDouble();
+          return Row(children: [
+            Text(fmt(Duration(milliseconds: value.round())),
+                style: const TextStyle(color: Colors.white)),
+            Expanded(
+              child: Slider(
+                value: value,
+                max: total <= 0 ? 1.0 : total,
+                onChangeStart: (_) => widget.onTouch(),
+                onChanged: (v) => setState(() => _drag = v),
+                onChangeEnd: (v) {
+                  widget.player.seek(Duration(milliseconds: v.round()));
+                  _pos.value = v.round();
+                  setState(() => _drag = null);
+                  widget.onTouch();
                 },
               ),
             ),
-          ),
-        ]),
+            Text(fmt(Duration(milliseconds: dur)),
+                style: const TextStyle(color: Colors.white)),
+          ]);
+        },
       ),
     );
   }

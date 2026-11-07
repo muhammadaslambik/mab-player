@@ -136,7 +136,7 @@ class _MiniProgress extends StatefulWidget {
 class _MiniProgressState extends State<_MiniProgress> {
   late final Stream<double> _stream = widget.player.stream.position
       .map(_frac)
-      .distinct((a, b) => (a - b).abs() < 0.002);
+      .distinct((a, b) => (a - b).abs() < 0.004);
 
   double _frac(Duration p) {
     final d = widget.player.state.duration.inMilliseconds;
