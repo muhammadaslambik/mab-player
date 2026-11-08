@@ -20,7 +20,12 @@ class AppActivity with WidgetsBindingObserver {
 
   final ValueNotifier<bool> active = ValueNotifier<bool>(true);
 
+  /// Untuk pengujian: MAB_ALWAYS_ACTIVE=1 membuat animasi tetap berjalan walau
+  /// jendela tidak fokus (supaya beban bisa diukur tanpa harus menjaga fokus).
+  static final bool _forceActive = Platform.environment['MAB_ALWAYS_ACTIVE'] == '1';
+
   void _set(bool v) {
+    if (_forceActive) return;
     if (active.value != v) active.value = v;
   }
 
