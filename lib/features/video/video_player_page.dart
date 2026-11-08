@@ -15,6 +15,11 @@ import '../../data/models/media_entry.dart';
 import '../../data/repositories/history_repo.dart';
 import '../../providers.dart';
 
+String? _hwdecOverride() {
+  final v = Platform.environment['MAB_HWDEC'];
+  return (v == null || v.isEmpty) ? null : v;
+}
+
 enum AspectMode {
   fit('Fit', BoxFit.contain, null),
   fill('Fill', BoxFit.cover, null),
@@ -61,7 +66,12 @@ class _VideoPlayerPageState extends ConsumerState<VideoPlayerPage> {
     unawaited(_tune());
     _controller = VideoController(
       _player,
-      configuration: const VideoControllerConfiguration(enableHardwareAcceleration: true),
+      configuration: VideoControllerConfiguration(
+        enableHardwareAcceleration: true,
+        // Pengujian: MAB_HWDEC=d3d11va | d3d11va-copy | auto-safe | no
+        // (kosong = bawaan media_kit).
+        hwdec: _hwdecOverride(),
+      ),
     );
 
     if (_mobile) {
