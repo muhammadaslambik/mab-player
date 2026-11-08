@@ -18,6 +18,13 @@ int APIENTRY wWinMain(_In_ HINSTANCE instance, _In_opt_ HINSTANCE prev,
   ::CoInitializeEx(nullptr, COINIT_APARTMENTTHREADED);
 
   flutter::DartProject project(L"data");
+  // Uji A/B renderer: set MAB_NO_IMPELLER=1 sebelum menjalankan untuk memakai Skia.
+  {
+    wchar_t mab_flag[8] = {0};
+    if (GetEnvironmentVariableW(L"MAB_NO_IMPELLER", mab_flag, 8) > 0 && mab_flag[0] == L'1') {
+      project.set_impeller_switch(flutter::ImpellerSwitch::Disabled);
+    }
+  }
 
   std::vector<std::string> command_line_arguments =
       GetCommandLineArguments();
